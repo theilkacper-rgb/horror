@@ -1,1 +1,255 @@
-index.html
+<script>
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+
+function resize(){
+  c.width = innerWidth;
+  c.height = innerHeight;
+}
+resize();
+addEventListener("resize", resize);
+
+const map = [
+"111111111111111111111111",
+"100000000000000000000001",
+"101111111111111111111101",
+"100000000000000000000101",
+"101111111111111111110101",
+"101000000000000000010101",
+"101011111111111110010101",
+"101010000000001010010101",
+"101010111111101010010101",
+"101010100000101010000001",
+"101010101110101011111101",
+"1010001010001010000000E1",
+"111111111111111111111111"
+];
+
+let px=1.5, py=1.5, pa=0;
+let mx=20.5, my=1.5;
+let started=false;
+let keysCollected=0;
+
+const keys={};
+
+const items=[];
+for(let y=1;y<map.length-1;y++){
+  for(let x=1;x<map[0].length-1;x++){
+    if(map[y][x]=="0" && Math.random()<0.09 && items.length<15){
+      items.push({x:x+.5,y:y+.5,t:false});
+    }
+  }
+}
+
+document.getElementById("startBtn").onclick=()=>{
+  started=true;
+  document.getElementById("menu").style.display="none";
+  c.requestPointerLock();
+};
+
+c.onclick=()=>{
+  if(document.pointerLockElement!==c)
+    c.requestPointerLock();
+};
+
+document.addEventListener("mousemove",e=>{
+  if(document.pointerLockElement===c && started){
+    pa += e.movementX*0.0025;
+  }
+});
+
+onkeydown=e=>keys[e.key.toLowerCase()]=true;
+onkeyup=e=>keys[e.key.toLowerCase()]=false;
+
+function wall(x,y){
+  return map[Math.floor(y)][Math.floor(x)]=="1";
+}
+
+function exitTile(x,y){
+  return map[Math.floor(y)][Math.floor(x)]=="E";
+}
+
+function scream(){
+  const ac=new AudioContext();
+  const o=ac.createOscillator();
+  const g=ac.createGain();
+
+  o.type="sawtooth";
+  o.frequency.value=35;
+
+  o.connect(g);
+  g.connect(ac.destination);
+
+  g.gain.value=.08;
+
+  o.start();
+  o.stop(ac.currentTime+.45);
+}
+
+function jumpscare(){
+  started=false;
+  document.getElementById("jump").style.display="flex";
+  scream();
+
+  setTimeout(()=>{
+    document.getElementById("jump").style.display="none";
+    document.getElementById("gameover").style.display="flex";
+  },700);
+}
+
+function movePlayer(){
+
+  const speed=keys["shift"]?0.08:0.05;
+
+  const dx=Math.cos(pa);
+  const dy=Math.sin(pa);
+
+  function move(nx,ny){
+    if(!wall(nx,py)) px=nx;
+    if(!wall(px,ny)) py=ny;
+  }
+
+  if(keys["w"]) move(px+dx*speed,py+dy*speed);
+  if(keys["s"]) move(px-dx*speed,py-dy*speed);
+
+  if(keys["a"]){
+    move(
+      px+Math.cos(pa-Math.PI/2)*speed,
+      py+Math.sin(pa-Math.PI/2)*speed
+    );
+  }
+
+  if(keys["d"]){
+    move(
+      px+Math.cos(pa+Math.PI/2)*speed,
+      py+Math.sin(pa+Math.PI/2)*speed
+    );
+  }
+
+  items.forEach(k=>{
+    if(!k.t && Math.hypot(px-k.x,py-k.y)<0.35){
+      k.t=true;
+      keysCollected++;
+      document.getElementById("kc").textContent=keysCollected;
+    }
+  });
+
+  if(keysCollected==15 && exitTile(px,py)){
+    started=false;
+    document.getElementById("win").style.display="flex";
+  }
+}
+
+function moveMonster(){
+
+  const dx=px-mx;
+  const dy=py-my;
+
+  const d=Math.hypot(dx,dy);
+
+  if(d>0.2){
+
+    const vx=dx/d*0.018;
+    const vy=dy/d*0.018;
+
+    if(!wall(mx+vx,my)) mx+=vx;
+    if(!wall(mx,my+vy)) my+=vy;
+  }
+
+  if(d<0.45) jumpscare();
+}
+
+function sprite(x,y,color,size){
+
+  const dx=x-px;
+  const dy=y-py;
+
+  const dist=Math.hypot(dx,dy);
+
+  let ang=Math.atan2(dy,dx)-pa;
+
+  while(ang<-Math.PI) ang+=Math.PI*2;
+  while(ang> Math.PI) ang-=Math.PI*2;
+
+  const FOV=Math.PI/3;
+
+  if(Math.abs(ang)>FOV/2) return;
+
+  const screen=(ang/(FOV/2)*0.5+0.5)*c.width;
+
+  const r=size/dist;
+
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.arc(screen,c.height/2,r,0,7);
+  ctx.fill();
+}
+
+function render(){
+
+  ctx.fillStyle="#220000";
+  ctx.fillRect(0,0,c.width,c.height/2);
+
+  ctx.fillStyle="#111";
+  ctx.fillRect(0,c.height/2,c.width,c.height/2);
+
+  const FOV=Math.PI/3;
+
+  for(let i=0;i<c.width;i++){
+
+    const ra=(pa-FOV/2)+(i/c.width)*FOV;
+
+    let d=0;
+
+    while(d<20){
+
+      d+=0.02;
+
+      const rx=px+Math.cos(ra)*d;
+      const ry=py+Math.sin(ra)*d;
+
+      if(wall(rx,ry)) break;
+    }
+
+    const cd=d*Math.cos(ra-pa);
+
+    const h=Math.min(c.height,c.height*0.9/cd);
+
+    const shade=Math.max(20,220-cd*28);
+
+    ctx.fillStyle=`rgb(${shade},0,0)`;
+
+    ctx.fillRect(i,(c.height-h)/2,1,h);
+  }
+
+  items.forEach(k=>{
+    if(!k.t) sprite(k.x,k.y,"gold",18);
+  });
+
+  sprite(mx,my,"white",30);
+
+  const g=ctx.createRadialGradient(
+    c.width/2,c.height/2,40,
+    c.width/2,c.height/2,280
+  );
+
+  g.addColorStop(0,"rgba(0,0,0,0)");
+  g.addColorStop(1,"rgba(0,0,0,.96)");
+
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,c.width,c.height);
+}
+
+(function loop(){
+
+  if(started){
+    movePlayer();
+    moveMonster();
+  }
+
+  render();
+
+  requestAnimationFrame(loop);
+
+})();
+</script>
