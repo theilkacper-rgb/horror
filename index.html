@@ -1,1 +1,195 @@
-index.html
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Long Corridor</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#000;font-family:Arial}
+canvas{display:block}
+#menu,#win,#jump{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}
+#menu,#win{background:#000d;color:#fff;z-index:10}
+#jump{display:none;background:#400;z-index:20}
+button{padding:14px 26px;background:#b00;color:#fff;border:0;border-radius:10px}
+#hud{position:fixed;top:10px;left:10px;color:#fff;z-index:5}
+#cross{position:fixed;left:50%;top:50%;width:6px;height:6px;background:#fff;border-radius:50%;margin:-3px}
+.face{width:260px;height:260px;background:#fff;border-radius:50%;position:relative;box-shadow:0 0 60px red}
+.eye{position:absolute;width:40px;height:40px;background:#000;border-radius:50%;top:70px}
+.eye:nth-child(1){left:55px}.eye:nth-child(2){right:55px}
+.mouth{position:absolute;left:50%;bottom:45px;transform:translateX(-50%);width:130px;height:70px;background:#900;border-radius:0 0 70px 70px}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>THE LONG CORRIDOR</h1>
+  <p>Zbierz 15 kluczy i znajdź wyjście.</p>
+  <button id="play">START</button>
+</div>
+
+<div id="win" style="display:none">
+  <h1>UCIEKŁEŚ!</h1>
+  <button onclick="location.reload()">Jeszcze raz</button>
+</div>
+
+<div id="jump">
+  <div class="face">
+    <div class="eye"></div><div class="eye"></div>
+    <div class="mouth"></div>
+  </div>
+</div>
+
+<div id="hud">🔑 <span id="count">0</span>/15</div>
+<div id="cross"></div>
+<canvas id="c"></canvas>
+
+<script>
+const cv=c,ctx=cv.getContext("2d");
+function rs(){cv.width=innerWidth;cv.height=innerHeight}rs();onresize=rs;
+
+const map=[
+"111111111111111111111111",
+"100000000000000000000001",
+"101111111111111111111101",
+"100000000000000000000101",
+"101111111111111111110101",
+"101000000000000000010101",
+"101011111111111110010101",
+"101010000000001010010101",
+"101010111111101010010101",
+"101010100000101010000001",
+"101010101110101011111101",
+"1010001010001010000000E1",
+"111111111111111111111111"
+];
+
+let px=1.5,py=1.5,a=0,play=false,k=0;
+const K={},items=[];
+
+for(let y=1;y<12;y++)
+ for(let x=1;x<23;x++)
+  if(map[y][x]=="0"&&Math.random()<.09&&items.length<15)
+   items.push({x:x+.5,y:y+.5,t:0});
+
+function wall(x,y){
+ let X=Math.floor(x),Y=Math.floor(y);
+ return map[Y][X]=="1";
+}
+function exit(x,y){
+ return map[Math.floor(y)][Math.floor(x)]=="E";
+}
+
+onkeydown=e=>K[e.key.toLowerCase()]=1;
+onkeyup=e=>K[e.key.toLowerCase()]=0;
+
+play.onclick=()=>{
+ menu.style.display="none";
+ play=true;
+ cv.requestPointerLock();
+};
+
+document.onmousemove=e=>{
+ if(document.pointerLockElement===cv)
+   a+=e.movementX*.0025;
+};
+
+cv.onclick=()=>{
+ if(document.pointerLockElement!==cv)
+   cv.requestPointerLock();
+};
+
+function scream(){
+ let ac=new AudioContext();
+ let o=ac.createOscillator(),g=ac.createGain();
+ o.type="sawtooth";o.frequency.value=35;
+ o.connect(g);g.connect(ac.destination);
+ g.gain.value=.08;
+ o.start();o.stop(ac.currentTime+.45);
+}
+
+setInterval(()=>{
+ if(play&&Math.random()<.2){
+   jump.style.display="flex";
+   scream();
+   setTimeout(()=>jump.style.display="none",550);
+ }
+},5000);
+
+function update(){
+ if(!play)return;
+ let s=K.shift?.08:.05;
+ let dx=Math.cos(a),dy=Math.sin(a);
+
+ function mv(nx,ny){
+  if(!wall(nx,py))px=nx;
+  if(!wall(px,ny))py=ny;
+ }
+
+ if(K.w)mv(px+dx*s,py+dy*s);
+ if(K.s)mv(px-dx*s,py-dy*s);
+ if(K.a)mv(px+Math.cos(a-Math.PI/2)*s,py+Math.sin(a-Math.PI/2)*s);
+ if(K.d)mv(px+Math.cos(a+Math.PI/2)*s,py+Math.sin(a+Math.PI/2)*s);
+
+ items.forEach(i=>{
+  if(!i.t&&Math.hypot(px-i.x,py-i.y)<.35){
+   i.t=1;k++;
+   count.textContent=k;
+  }
+ });
+
+ if(k==15&&exit(px,py)){
+   play=false;
+   win.style.display="flex";
+ }
+}
+
+function draw(){
+ ctx.fillStyle="#220000";
+ ctx.fillRect(0,0,cv.width,cv.height/2);
+ ctx.fillStyle="#111";
+ ctx.fillRect(0,cv.height/2,cv.width,cv.height/2);
+
+ const FOV=Math.PI/3;
+
+ for(let x=0;x<cv.width;x++){
+   let ra=a-FOV/2+x/cv.width*FOV;
+   let d=0;
+   while(d<20){
+     d+=.02;
+     let rx=px+Math.cos(ra)*d;
+     let ry=py+Math.sin(ra)*d;
+     if(wall(rx,ry))break;
+   }
+   d*=Math.cos(ra-a);
+   let h=Math.min(cv.height,cv.height*.9/d);
+   let sh=Math.max(20,220-d*25);
+   ctx.fillStyle=`rgb(${sh},0,0)`;
+   ctx.fillRect(x,(cv.height-h)/2,1,h);
+ }
+
+ items.forEach(i=>{
+  if(i.t)return;
+  let dx=i.x-px,dy=i.y-py;
+  let dist=Math.hypot(dx,dy);
+  let ang=Math.atan2(dy,dx)-a;
+  while(ang<-Math.PI)ang+=Math.PI*2;
+  while(ang>Math.PI)ang-=Math.PI*2;
+  if(Math.abs(ang)<FOV/2){
+    let sx=(ang/(FOV/2)*.5+.5)*cv.width;
+    let sz=260/dist;
+    ctx.fillStyle="gold";
+    ctx.beginPath();
+    ctx.arc(sx,cv.height/2,sz/8,0,7);
+    ctx.fill();
+  }
+ });
+}
+
+(function loop(){
+ update();
+ draw();
+ requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
